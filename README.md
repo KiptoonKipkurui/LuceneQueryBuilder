@@ -1,38 +1,59 @@
-# LuceneQueryBuilder
+# Lucene Query Builder (Go)
 
-A lightweight **Go** library for **programmatically building Lucene-style query strings** in a safe, composable, and testable way. The project abstracts common query patterns (terms, ranges, boolean logic, and constraints) into strongly typed builders, reducing string-concatenation errors and improving readability when constructing complex search queries.
+A lightweight, immutable Go library for building Lucene-style query strings in a safe, composable, and testable way.
 
-This library is useful when working with search engines or platforms that expose a Lucene-compatible query syntax (for example, log analytics, document search, or security event filtering systems).
-
----
-
-## ✨ Features
-
-* **Type-safe query construction** – avoid brittle string concatenation
-* **Composable expressions** – build complex queries from small reusable parts
-* **Boolean logic support** – AND / OR / NOT composition
-* **Constraint handling** – ranges, equality, and comparison operators
-* **Test-driven design** – comprehensive unit tests for correctness
-* **Zero dependencies** – pure Go standard library
+Instead of relying on string concatenation, the library models queries as a small expression tree (AST). This makes complex queries easier to reason about, extend, and test.
 
 ---
 
-## 📦 Installation
+## Key Features
+
+* Immutable expression tree (AST) design
+* Fluent, readable API (`And`, `Or`, `Not`, `MatchAny`, `MatchAll`)
+* Correct Lucene boolean semantics
+* No string concatenation logic in user code
+* Behaviour-driven tests that survive refactors
+* Zero external dependencies
+
+---
+
+## Installation
 
 ```bash
-go get github.com/kiptoonkipkurui/LuceneQueryBuilder
+go get github.com/kiptoonkipkurui/lucenequerybuilder
 ```
 
+Import the query package:
+
+```go
+import "github.com/kiptoonkipkurui/lucenequerybuilder/query"
+```
 
 ---
 
-## 🚀 Quick Start
+## Design Overview
 
-### Basic Term Query
+Instead of building query strings directly, this library constructs an expression tree:
+
+* Each node represents a logical operation or constraint
+* The tree is rendered to a Lucene query string only at the end
+* Expressions are immutable, so chaining never mutates previous queries
+
+This approach avoids:
+
+* Brittle string concatenation
+* Invalid intermediate states
+* Hidden side effects during chaining
+
+---
+
+## Quick Start
+
+### Simple term
 
 ```go
-q := Term("status", "active")
-fmt.Println(q.String())
+expr := query.Term("status", "active")
+q := query.Build(expr)
 ```
 
 Output:
@@ -43,164 +64,212 @@ status:active
 
 ---
 
-### Boolean Composition
+### Boolean composition
 
 ```go
-q := And(
-    Term("status", "active"),
-    Term("role", "admin"),
+expr := query.And(
+	query.Term("title", "politics"),
+	query.Term("title", "fashion"),
 )
 
-fmt.Println(q.String())
+q := query.Build(expr)
 ```
 
 Output:
 
 ```
-(status:active AND role:admin)
+(title:politics AND title:fashion)
 ```
 
 ---
 
-### OR / NOT Expressions
+### NOT expressions
 
 ```go
-q := Or(
-    Term("env", "prod"),
-    Not(Term("env", "dev")),
+expr := query.Not(query.Term("status", "draft"))
+q := query.Build(expr)
+```
+
+Output:
+
+```
+NOT status:draft
+```
+
+---
+
+### Nested expressions and precedence
+
+```go
+expr := query.Or(
+	query.Term("author", "alice"),
+	query.And(
+		query.Term("year", "2024"),
+		query.Term("status", "published"),
+	),
 )
 
-fmt.Println(q.String())
+q := query.Build(expr)
 ```
 
 Output:
 
 ```
-(env:prod OR NOT env:dev)
+(author:alice OR (year:2024 AND status:published))
 ```
 
 ---
 
-### Range Constraints
+## Match Helpers
+
+### Match any (OR-reduce)
 
 ```go
-q := Range("timestamp", ">=", "2024-01-01")
-fmt.Println(q.String())
+expr := query.MatchAny("tag", []string{"ai", "ml", "search"})
+q := query.Build(expr)
 ```
 
 Output:
 
 ```
-timestamp:>=2024-01-01
+((tag:ai OR tag:ml) OR tag:search)
 ```
 
 ---
 
-## 🧱 Core Concepts
-
-### Expressions
-
-An **Expression** represents any valid Lucene query fragment. Every expression implements:
+### Match all (AND-reduce)
 
 ```go
-String() string
+expr := query.MatchAll("category", []string{"tech", "backend"})
+q := query.Build(expr)
 ```
 
-This allows expressions to be nested and composed freely.
-
----
-
-### Constraints
-
-Constraints define **field-level conditions**, such as:
-
-* Equality
-* Inequality
-* Greater-than / less-than
-* Ranges
-
-They are implemented in `constraint.go` and validated through unit tests.
-
----
-
-### Matchers
-
-Matchers encapsulate logic for **matching fields against values** and ensure that generated queries follow valid Lucene syntax.
-
----
-
-## 🧪 Testing
-
-The project follows a test-first approach. All major components are covered by unit tests:
-
-```bash
-go test ./...
-```
-
-Test files:
-
-* `constraint_test.go`
-* `expressions_test.go`
-* `matcher_test.go`
-
-These tests verify:
-
-* Correct query string generation
-* Operator precedence and grouping
-* Edge cases in boolean composition
-
----
-
-## 📁 Project Structure
+Output:
 
 ```
-LuceneQueryBuilder/
-├── constraint.go          # Field constraints and comparisons
-├── expressions.go         # Boolean and logical expressions
-├── matcher.go             # Field/value match helpers
-├── *_test.go              # Unit tests
-├── go.mod                 # Go module definition
-├── README.md              # Project documentation
+(category:tech AND category:backend)
 ```
 
 ---
 
-## 🔒 Security
+## Core Concepts
 
-If you discover a security issue, please refer to `SECURITY.md` for reporting guidelines.
+### Expr
 
----
+```go
+type Expr interface {
+	Build(*strings.Builder)
+}
+```
 
-## 🤝 Contributing
-
-Contributions are welcome. Please see `CONTRIBUTING.md` for guidelines and best practices.
-
----
-
-## 📜 License
-
-This project is licensed under the terms of the **MIT License**. See the `LICENSE` file for details.
+Every query element implements `Expr`, allowing expressions to be freely composed and nested.
 
 ---
 
-## 🎯 Use Cases
+### Expression Types
 
-* Building search filters dynamically in backend services
-* Generating Lucene queries from APIs or user-defined rules
-* Safer query generation for logging, SIEM, and analytics platforms
-* Improving readability and maintainability of complex search logic
-
----
-
-## 🛣️ Future Improvements
-
-* Query escaping and sanitisation helpers
-* Support for fuzzy and wildcard queries
-* JSON → Lucene query translation
-* Fluent builder API
+* `ConstraintExpr` – field/value pairs (e.g. `title:politics`)
+* `BinaryExpr` – AND / OR operations
+* `NotExpr` – unary NOT expressions
 
 ---
 
-**Author:** Daniel Kiptoon
+### Build
 
-If you have questions or ideas, feel free to open an issue or start a discussion.
+```go
+func Build(expr Expr) string
+```
+
+Renders the expression tree into a valid Lucene query string.
+
+---
+
+## Testing Strategy
+
+The test suite focuses on behaviour, not implementation details.
+
+Tests verify:
+
+* Boolean correctness
+* Operator precedence
+* Chaining stability
+* Legacy behaviour compatibility
+* Defensive input validation
+
+Example test:
+
+```go
+func TestChainedExpression(t *testing.T) {
+	expr := query.And(
+		query.Term("a", "1"),
+		query.Not(query.Term("b", "2")),
+	)
+
+	got := query.Build(expr)
+	expected := "(a:1 AND NOT b:2)"
+
+	if got != expected {
+		t.Fatalf("expected %q, got %q", expected, got)
+	}
+}
+```
+
+---
+
+## Project Structure
+
+```
+lucenequerybuilder/
+├── README.md
+├── SECURITY.md
+├── CONTRIBUTING.md
+├── go.mod
+└── query/
+    ├── expr.go
+    ├── constraint.go
+    ├── binary_expr.go
+    ├── not_expr.go
+    ├── operators.go
+    ├── fluent.go
+    ├── aggregate.go
+    ├── match.go
+    ├── builder.go
+    └── *_test.go
+```
+
+---
+
+## Input Validation
+
+* Empty fields are rejected at construction time
+* Invalid states are prevented by design
+* Programmer errors fail fast with clear panics
+
+---
+
+## Future Improvements
+
+* Field/value escaping helpers
+* Range queries (`[a TO b]`, `{}`)
+* Wildcard and fuzzy matching
+* JSON to Lucene query translation
+* Optional parser for reverse conversion
+
+---
+
+## Contributing
+
+Contributions are welcome.
+Please see `CONTRIBUTING.md` for guidelines.
+
+---
+
+## License
+
+MIT License. See `LICENSE` for details.
+
+---
+
+## Author
+
+Daniel Kiptoon
