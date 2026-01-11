@@ -41,7 +41,7 @@ func (e Expression) IsConstraint() bool {
 	return e.Constraint != nil
 }
 
-func (e Expression) ToBuilder() strings.Builder {
+func (e Expression) ToBuilder() *strings.Builder {
 	if e.IsConstraint() {
 		return e.Constraint.ToBuilder()
 	} else {
@@ -49,7 +49,7 @@ func (e Expression) ToBuilder() strings.Builder {
 	}
 }
 
-func (e Expression) InParens() strings.Builder {
+func (e Expression) InParens() *strings.Builder {
 
 	var sb strings.Builder
 
@@ -67,7 +67,7 @@ func (e Expression) InParens() strings.Builder {
 	sb.WriteString(r)
 
 	sb.WriteString(")")
-	return sb
+	return &sb
 }
 
 func (e *Expression) NotExpr(field, value string) *Expression {
@@ -128,7 +128,7 @@ func (e *Expression) apply(op Operator, other Expression) *Expression {
 	return nil
 }
 
-//Operator enum
+// Operator enum
 type Operator string
 
 const (

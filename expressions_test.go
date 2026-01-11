@@ -1,64 +1,134 @@
 package main
 
-import (
-	"fmt"
-	"testing"
-)
+import "testing"
 
-func TestExpress(t *testing.T) {
-	constraintLeft := NewConstraint("title", "politics")
+func TestExpression_BooleanComposition(t *testing.T) {
+	tests := []struct {
+		name     string
+		build    func() string
+		expected string
+	}{
+		{
+			name: "AND expression",
+			build: func() string {
+				left := NewConstraint("title", "politics")
+				right := NewConstraint("title", "fashion")
 
-	constraintRight := NewConstraint("title", "fashion")
+				expr := NewExpressionCtor(
+					And,
+					*NewExpression(*left),
+					*NewExpression(*right),
+				)
 
-	expression := NewExpressionCtor(And, *NewExpression(*constraintLeft), *NewExpression(*constraintRight))
+				return expr.ToBuilder().String()
+			},
+			expected: "(title:politics AND title:fashion)",
+		},
+		{
+			name: "AND with NOT",
+			build: func() string {
+				left := NewConstraint("title", "politics")
+				right := NewConstraint("title", "fashion")
 
-	sb := expression.ToBuilder()
-	query := sb.String()
+				expr := NewExpressionCtor(
+					And,
+					*NewExpression(*left),
+					*NewExpression(*right),
+				).NotExpr("title", "sports")
 
-	fmt.Print(query)
+				return expr.ToBuilder().String()
+			},
+			expected: "((title:politics AND title:fashion) NOT title:sports)",
+		},
+		{
+			name: "AND chained with OR",
+			build: func() string {
+				left := NewConstraint("title", "politics")
+				right := NewConstraint("title", "fashion")
+
+				expr := NewExpressionCtor(
+					And,
+					*NewExpression(*left),
+					*NewExpression(*right),
+				).OrExpr("title", "sports")
+
+				return expr.ToBuilder().String()
+			},
+			expected: "((title:politics AND title:fashion) OR title:sports)",
+		},
+		{
+			name: "AND chained with AND",
+			build: func() string {
+				left := NewConstraint("title", "politics")
+				right := NewConstraint("title", "fashion")
+
+				expr := NewExpressionCtor(
+					And,
+					*NewExpression(*left),
+					*NewExpression(*right),
+				).AndExpr("title", "sports")
+
+				return expr.ToBuilder().String()
+			},
+			expected: "((title:politics AND title:fashion) AND title:sports)",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.build()
+			if got != tt.expected {
+				t.Fatalf("expected %q, got %q", tt.expected, got)
+			}
+		})
+	}
 }
 
-func TestNotExpr(t *testing.T) {
-	constraintLeft := NewConstraint("title", "politics")
+func TestExpression_NestedPrecedence(t *testing.T) {
+	expr := NewExpressionCtor(
+		Or,
+		*NewExpression(*NewConstraint("author", "alice")),
+		*NewExpressionCtor(
+			And,
+			*NewExpression(*NewConstraint("title", "politics")),
+			*NewExpression(*NewConstraint("year", "2024")),
+		),
+	)
 
-	constraintRight := NewConstraint("title", "fashion")
+	got := expr.ToBuilder().String()
+	expected := "(author:alice OR (title:politics AND year:2024))"
 
-	expression := NewExpressionCtor(And, *NewExpression(*constraintLeft), *NewExpression(*constraintRight))
+	if got != expected {
+		t.Fatalf("expected %q, got %q", expected, got)
+	}
+}
+func TestNewConstraint_EmptyFieldPanicsWithMessage(t *testing.T) {
+	defer func() {
+		r := recover()
+		if r == nil {
+			t.Fatal("expected panic, got nil")
+		}
 
-	expression = expression.NotExpr("title", "sports")
+		if r != "field cannot be null" {
+			t.Fatalf("unexpected panic message: %v", r)
+		}
+	}()
 
-	sb := expression.ToBuilder()
-	query := sb.String()
-
-	fmt.Print(query)
+	_ = NewConstraint("", "")
 }
 
-func TestAndExpr(t *testing.T) {
-	constraintLeft := NewConstraint("title", "politics")
+func TestExpression_ChainingIsStable(t *testing.T) {
+	expr := NewExpression(*NewConstraint("a", "1"))
 
-	constraintRight := NewConstraint("title", "fashion")
+	expr = expr.
+		AndExpr("b", "2").
+		OrExpr("c", "3").
+		NotExpr("d", "4")
 
-	expression := NewExpressionCtor(And, *NewExpression(*constraintLeft), *NewExpression(*constraintRight))
+	got := expr.ToBuilder().String()
+	expected := "(((a:1 AND b:2) OR c:3) NOT d:4)"
 
-	expression = expression.AndExpr("title", "sports")
-
-	sb := expression.ToBuilder()
-	query := sb.String()
-
-	fmt.Print(query)
-}
-
-func TestOrExpr(t *testing.T) {
-	constraintLeft := NewConstraint("title", "politics")
-
-	constraintRight := NewConstraint("title", "fashion")
-
-	expression := NewExpressionCtor(And, *NewExpression(*constraintLeft), *NewExpression(*constraintRight))
-
-	expression = expression.OrExpr("title", "sports")
-
-	sb := expression.ToBuilder()
-	query := sb.String()
-
-	fmt.Print(query)
+	if got != expected {
+		t.Fatalf("expected %q, got %q", expected, got)
+	}
 }

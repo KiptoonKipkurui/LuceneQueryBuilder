@@ -20,12 +20,12 @@ func NewConstraint(field, value string) *Constraint {
 	return &Constraint{Field: field, Value: value}
 }
 
-func (c Constraint) ToBuilder() strings.Builder {
+func (c Constraint) ToBuilder() *strings.Builder {
 
 	var sb strings.Builder
 
 	var formated = fmt.Sprintf("%s:%s", c.Field, c.Value)
 	sb.WriteString(formated)
 
-	return sb
+	return &sb
 }
